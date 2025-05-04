@@ -95,21 +95,53 @@ export default function Home() {
   const fetchPdfs = async () => {
     if (!user) return;
     setLoading(true);
+    // List all files in the user's folder
     const { data, error } = await supabase.storage.from('pdfs').list(user.id + '/', { limit: 100, offset: 0, sortBy: { column: 'name', order: 'asc' } });
     if (error) {
       setPdfs([]);
       setLoading(false);
+      console.error('Error listing PDFs:', error.message);
       return;
     }
-    // Get public URLs
-    const pdfList = await Promise.all(
-      (data || []).map(async (file) => {
-        const { data: urlData } = supabase.storage.from('pdfs').getPublicUrl(`${user.id}/${file.name}`);
-        return { id: file.id || file.name, name: file.name, url: urlData.publicUrl };
-      })
-    );
+    if (!data || data.length === 0) {
+      setPdfs([]);
+      setLoading(false);
+      console.log('No PDFs found for user:', user.id);
+      return;
+    }
+    // Get public URLs for each file
+    const pdfList = data.map((file) => {
+      const { data: urlData } = supabase.storage.from('pdfs').getPublicUrl(`${user.id}/${file.name}`);
+      return { id: file.id || file.name, name: file.name, url: urlData.publicUrl };
+    });
     setPdfs(pdfList);
     setLoading(false);
+    console.log('Fetched PDFs:', pdfList);
+  };
+
+  // Download PDF from a URL and save to user's bucket
+  const handleDownloadAndSave = async (fileUrl) => {
+    if (!user) {
+      setError("You must be signed in to save PDFs.");
+      return;
+    }
+    try {
+      setError("");
+      setLoading(true);
+      const response = await fetch(fileUrl);
+      if (!response.ok) throw new Error("Download failed");
+      const blob = await response.blob();
+      const fileExt = fileUrl.split('.').pop().split(/[#?]/)[0];
+      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from('pdfs').upload(fileName, blob, { contentType: 'application/pdf' });
+      if (uploadError) throw uploadError;
+      await fetchPdfs();
+    } catch (err) {
+      console.error('Save error:', err.message);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -191,10 +223,17 @@ export default function Home() {
               ) : (
                 <ul>
                   {pdfs.map((pdf) => (
-                    <li key={pdf.id}>
+                    <li key={pdf.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                       <a href={pdf.url} target="_blank" rel="noopener noreferrer">
                         {pdf.name}
                       </a>
+                      <button
+                        type="button"
+                        disabled={loading}
+                        onClick={() => handleDownloadAndSave(pdf.url)}
+                      >
+                        Save to My Account
+                      </button>
                     </li>
                   ))}
                 </ul>
