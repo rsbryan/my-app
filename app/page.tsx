@@ -13,6 +13,11 @@ interface PdfFile {
   url: string;
 }
 
+// Function to get shareable link
+const getShareableLink = (pdf: PdfFile): string => {
+  return pdf.url;
+};
+
 export default function Home() {
   // Theme state
   const { theme, toggleTheme } = useTheme();
@@ -554,6 +559,18 @@ export default function Home() {
                               className="btn-delete"
                             >
                               Delete
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const link = getShareableLink(pdf);
+                                navigator.clipboard.writeText(link);
+                                alert('Link copied to clipboard!');
+                              }}
+                              disabled={loading}
+                              className="btn-link"
+                            >
+                              Copy Link
                             </button>
                           </div>
                         </>

@@ -12,6 +12,7 @@
   --rename-btn: #4a90e2;
   --delete-btn: #d9534f;
   --save-btn: #5cb85c;
+  --link-btn: #4a90e2;
 }
 
 html[data-theme='dark'] {
@@ -28,6 +29,7 @@ html[data-theme='dark'] {
   --rename-btn: #3a78c9;
   --delete-btn: #b33f3b;
   --save-btn: #4a9e4a;
+  --link-btn: #3a78c9;
 }
 
 html,
@@ -219,6 +221,10 @@ a:hover {
 
 .btn-save {
   background: var(--save-btn);
+}
+
+.btn-link {
+  background: var(--link-btn, #4a90e2);
 }
 
 .pdf-edit-form {
