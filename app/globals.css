@@ -49,7 +49,7 @@ a {
   border: 1px solid #eaeaea;
   border-radius: 8px;
   background: #fafafa;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+  box-shadow: 0 2px 8px rgba(171, 166, 166, 0.03);
 }
 .auth-container h2, .upload-container h2 {
   margin-bottom: 1rem;
