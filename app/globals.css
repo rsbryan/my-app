@@ -44,13 +44,25 @@ a {
 /* Auth and upload form styles */
 .auth-container, .upload-container {
   max-width: 400px;
-  margin: 2rem auto;
+  margin: 0 auto;
   padding: 2rem;
   border: 1px solid #eaeaea;
   border-radius: 8px;
   background: #fafafa;
   box-shadow: 0 2px 8px rgba(171, 166, 166, 0.03);
 }
+
+/* When not in dashboard layout, add top margin */
+.auth-container {
+  margin-top: 2rem;
+}
+
+/* In dashboard, reset margins */
+.dashboard .upload-container,
+.dashboard .upload-list {
+  margin: 0;
+}
+
 .auth-container h2, .upload-container h2 {
   margin-bottom: 1rem;
 }
@@ -85,4 +97,88 @@ a {
 }
 .upload-list li {
   margin-bottom: 0.5rem;
+}
+
+/* PDF action buttons */
+.pdf-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pdf-actions button {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+.btn-rename {
+  background: #4a90e2;
+}
+
+.btn-delete {
+  background: #d9534f;
+}
+
+.btn-save {
+  background: #5cb85c;
+}
+
+.pdf-edit-form {
+  display: flex;
+  width: 100%;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.pdf-edit-form input {
+  flex: 1;
+  min-width: 100px;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+/* Dashboard layout styles */
+.dashboard {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto;
+  gap: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  align-items: start;
+}
+
+.upload-container {
+  grid-column: 1;
+  margin: 0;
+  height: fit-content;
+}
+
+.upload-list {
+  grid-column: 2;
+  margin: 0;
+  height: fit-content;
+  background: #fafafa;
+  border: 1px solid #eaeaea;
+  border-radius: 8px;
+  padding: 2rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+}
+
+/* Responsive layout */
+@media (max-width: 768px) {
+  .dashboard {
+    grid-template-columns: 1fr;
+  }
+  
+  .upload-container,
+  .upload-list {
+    grid-column: 1;
+  }
+  
+  .upload-list {
+    margin-top: 2rem;
+  }
 }

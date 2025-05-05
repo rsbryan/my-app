@@ -25,6 +25,10 @@ export default function Home() {
   const [uploadError, setUploadError] = useState<string>("");
   const [pdfs, setPdfs] = useState<PdfFile[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  
+  // Edit name state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [newName, setNewName] = useState<string>("");
 
   // Check for user session on mount
   useEffect(() => {
@@ -249,6 +253,91 @@ export default function Home() {
     }
   };
 
+  // Delete PDF
+  const handleDeletePdf = async (fileName: string) => {
+    if (!user) return;
+    
+    if (!confirm("Are you sure you want to delete this file?")) {
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const { error } = await supabase.storage
+        .from('pdfs')
+        .remove([`${user.id}/${fileName}`]);
+        
+      if (error) throw error;
+      
+      // Update the UI by removing the deleted file
+      setPdfs(pdfs.filter(pdf => pdf.name !== fileName));
+    } catch (error: any) {
+      setUploadError(error.message || "Failed to delete file");
+      console.error("Delete error:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Start editing PDF name
+  const startEditName = (pdf: PdfFile) => {
+    setEditingId(pdf.id);
+    setNewName(pdf.name);
+  };
+
+  // Cancel editing
+  const cancelEdit = () => {
+    setEditingId(null);
+    setNewName("");
+  };
+
+  // Save new PDF name
+  const saveNewName = async (pdf: PdfFile) => {
+    if (!user || !newName.trim()) return;
+    
+    setLoading(true);
+    try {
+      // First, copy the file with the new name
+      const oldPath = `${user.id}/${pdf.name}`;
+      const fileExtension = getFileExtension(pdf.name);
+      const newFileName = `${newName.trim()}${fileExtension ? `.${fileExtension}` : ''}`;
+      const newPath = `${user.id}/${newFileName}`;
+      
+      // Get the file from storage
+      const { data: fileData, error: downloadError } = await supabase.storage
+        .from('pdfs')
+        .download(oldPath);
+        
+      if (downloadError) throw downloadError;
+      
+      // Upload with new name
+      const { error: uploadError } = await supabase.storage
+        .from('pdfs')
+        .upload(newPath, fileData, { 
+          contentType: 'application/pdf',
+          upsert: false
+        });
+        
+      if (uploadError) throw uploadError;
+      
+      // Delete the old file
+      const { error: deleteError } = await supabase.storage
+        .from('pdfs')
+        .remove([oldPath]);
+        
+      if (deleteError) throw deleteError;
+      
+      // Update UI and reset state
+      cancelEdit();
+      await fetchPdfs();
+    } catch (error: any) {
+      setUploadError(error.message || "Failed to rename file");
+      console.error("Rename error:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (user) {
       fetchPdfs();
@@ -314,7 +403,7 @@ export default function Home() {
             </p>
           </div>
         ) : (
-          <>
+          <div className="dashboard">
             <div className="upload-container">
               <div className="user-info" style={{ marginBottom: '1rem' }}>
                 <p>Logged in as: <strong>{user.email}</strong></p>
@@ -350,23 +439,72 @@ export default function Home() {
               ) : (
                 <ul>
                   {pdfs.map((pdf) => (
-                    <li key={pdf.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                      <a href={pdf.url} target="_blank" rel="noopener noreferrer">
-                        {pdf.name}
-                      </a>
-                      <button
-                        type="button"
-                        disabled={loading}
-                        onClick={() => handleDownloadAndSave(pdf.url)}
-                      >
-                        Save to My Account
-                      </button>
+                    <li key={pdf.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      {editingId === pdf.id ? (
+                        // Edit mode
+                        <div className="pdf-edit-form">
+                          <input
+                            type="text"
+                            value={newName}
+                            onChange={(e) => setNewName(e.target.value)}
+                          />
+                          <div className="pdf-actions">
+                            <button
+                              type="button"
+                              onClick={() => saveNewName(pdf)}
+                              disabled={loading}
+                              className="btn-save"
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEdit}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        // View mode
+                        <>
+                          <a href={pdf.url} target="_blank" rel="noopener noreferrer" style={{ flex: '1', minWidth: '100px' }}>
+                            {pdf.name}
+                          </a>
+                          <div className="pdf-actions">
+                            <button
+                              type="button"
+                              onClick={() => startEditName(pdf)}
+                              disabled={loading}
+                              className="btn-rename"
+                            >
+                              Rename
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePdf(pdf.name)}
+                              disabled={loading}
+                              className="btn-delete"
+                            >
+                              Delete
+                            </button>
+                            <button
+                              type="button"
+                              disabled={loading}
+                              onClick={() => handleDownloadAndSave(pdf.url)}
+                              className="btn-save"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </li>
                   ))}
                 </ul>
               )}
             </div>
-          </>
+          </div>
         )}
       </main>
     </div>
