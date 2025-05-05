@@ -2,143 +2,248 @@
 import { useState, useEffect } from "react";
 import styles from "./page.module.css";
 import { supabase } from "./supabaseClient";
+import { Session, User } from "@supabase/supabase-js";
+
+// Define types for our PDF file object
+interface PdfFile {
+  id: string;
+  name: string;
+  url: string;
+}
 
 export default function Home() {
   // Auth state
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [user, setUser] = useState(null);
-  const [authMode, setAuthMode] = useState("sign-in"); // or "sign-up"
-  const [error, setError] = useState("");
+  const [email, setEmail] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
+  const [user, setUser] = useState<User | null>(null);
+  const [authMode, setAuthMode] = useState<"sign-in" | "sign-up">("sign-in");
+  const [authError, setAuthError] = useState<string>("");
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
 
   // PDF upload state
-  const [pdfFile, setPdfFile] = useState(null);
-  const [uploadError, setUploadError] = useState("");
-  const [pdfs, setPdfs] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [uploadError, setUploadError] = useState<string>("");
+  const [pdfs, setPdfs] = useState<PdfFile[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
 
   // Check for user session on mount
   useEffect(() => {
     const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user || null);
+      setAuthLoading(true);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setUser(session?.user || null);
+      } catch (error) {
+        console.error("Error checking session:", error);
+        setAuthError("Failed to check authentication status");
+      } finally {
+        setAuthLoading(false);
+      }
     };
     getSession();
+    
     // Listen for auth changes
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user || null);
     });
+    
     return () => {
       listener?.subscription.unsubscribe();
     };
   }, []);
 
   // Sign up
-  const handleSignUp = async (e) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    setAuthError("");
     setLoading(true);
-    const { error } = await supabase.auth.signUp({ email, password });
-    setLoading(false);
-    if (error) {
-      setError(error.message);
-    } else {
-      setError("Check your email for a confirmation link.");
+    try {
+      const { error } = await supabase.auth.signUp({ email, password });
+      if (error) throw error;
+      setAuthError("Check your email for a confirmation link.");
+    } catch (error: any) {
+      setAuthError(error.message || "Failed to sign up");
+    } finally {
+      setLoading(false);
     }
   };
 
   // Sign in
-  const handleSignIn = async (e) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    setAuthError("");
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-    if (error) {
-      setError(error.message);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+    } catch (error: any) {
+      setAuthError(error.message || "Failed to sign in");
+    } finally {
+      setLoading(false);
     }
   };
 
   // Sign out
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setPdfs([]);
+    setLoading(true);
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+      setPdfs([]);
+    } catch (error: any) {
+      setAuthError(error.message || "Failed to sign out");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Safely extract file extension
+  const getFileExtension = (filename: string): string => {
+    // Handle cases with no extension
+    if (!filename.includes('.')) return '';
+    
+    // Split by dot and get the last part, then remove query params
+    return filename.split('.').pop()?.split(/[#?]/)[0] || '';
   };
 
   // Upload PDF
-  const handleUpload = async (e) => {
+  const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     setUploadError("");
+    
     if (!pdfFile) {
       setUploadError("Please select a PDF file.");
       return;
     }
+    
     if (!user) {
       setUploadError("You must be signed in to upload.");
       return;
     }
+    
+    // Validate file type
+    if (!pdfFile.type.includes('pdf')) {
+      setUploadError("File must be a PDF document.");
+      return;
+    }
+    
+    // Check file size (5MB limit)
+    const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+    if (pdfFile.size > MAX_SIZE) {
+      setUploadError(`File size exceeds 5MB limit (${(pdfFile.size / (1024 * 1024)).toFixed(2)}MB)`);
+      return;
+    }
+    
     setLoading(true);
-    const fileExt = pdfFile.name.split('.').pop();
-    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-    const { error } = await supabase.storage.from('pdfs').upload(fileName, pdfFile);
-    setLoading(false);
-    if (error) {
-      setUploadError(error.message);
-    } else {
+    try {
+      const fileExt = getFileExtension(pdfFile.name) || 'pdf';
+      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+      
+      const { error } = await supabase.storage
+        .from('pdfs')
+        .upload(fileName, pdfFile, { 
+          contentType: 'application/pdf',
+          upsert: false
+        });
+        
+      if (error) throw error;
+      
       setPdfFile(null);
-      fetchPdfs();
+      // Reset file input
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+      if (fileInput) fileInput.value = '';
+      
+      await fetchPdfs();
+    } catch (error: any) {
+      setUploadError(error.message || "Failed to upload file");
+      console.error("Upload error:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
   // Fetch user's PDFs
   const fetchPdfs = async () => {
     if (!user) return;
+    
     setLoading(true);
-    // List all files in the user's folder
-    const { data, error } = await supabase.storage.from('pdfs').list(user.id + '/', { limit: 100, offset: 0, sortBy: { column: 'name', order: 'asc' } });
-    if (error) {
-      setPdfs([]);
-      setLoading(false);
+    try {
+      console.log('Fetching PDFs for user:', user.id);
+      
+      // List all files in the user's folder
+      const { data, error } = await supabase.storage
+        .from('pdfs')
+        .list(user.id + '/', { 
+          limit: 100, 
+          offset: 0, 
+          sortBy: { column: 'name', order: 'asc' } 
+        });
+        
+      console.log('Raw storage response:', { data, error });
+      
+      if (error) throw error;
+      
+      if (!data || data.length === 0) {
+        setPdfs([]);
+        console.log('No PDFs found for user:', user.id);
+        return;
+      }
+      
+      // Get public URLs for each file
+      const pdfList = data.map((file) => {
+        const { data: urlData } = supabase.storage
+          .from('pdfs')
+          .getPublicUrl(`${user.id}/${file.name}`);
+          
+        return { 
+          id: file.id || file.name, 
+          name: file.name, 
+          url: urlData.publicUrl 
+        };
+      });
+      
+      setPdfs(pdfList);
+      console.log('Fetched PDFs:', pdfList);
+    } catch (error: any) {
       console.error('Error listing PDFs:', error.message);
-      return;
-    }
-    if (!data || data.length === 0) {
-      setPdfs([]);
+      setUploadError("Failed to load your PDFs");
+    } finally {
       setLoading(false);
-      console.log('No PDFs found for user:', user.id);
-      return;
     }
-    // Get public URLs for each file
-    const pdfList = data.map((file) => {
-      const { data: urlData } = supabase.storage.from('pdfs').getPublicUrl(`${user.id}/${file.name}`);
-      return { id: file.id || file.name, name: file.name, url: urlData.publicUrl };
-    });
-    setPdfs(pdfList);
-    setLoading(false);
-    console.log('Fetched PDFs:', pdfList);
   };
 
   // Download PDF from a URL and save to user's bucket
-  const handleDownloadAndSave = async (fileUrl) => {
+  const handleDownloadAndSave = async (fileUrl: string) => {
     if (!user) {
-      setError("You must be signed in to save PDFs.");
+      setAuthError("You must be signed in to save PDFs.");
       return;
     }
+    
+    setLoading(true);
     try {
-      setError("");
-      setLoading(true);
       const response = await fetch(fileUrl);
       if (!response.ok) throw new Error("Download failed");
+      
       const blob = await response.blob();
-      const fileExt = fileUrl.split('.').pop().split(/[#?]/)[0];
+      if (!blob.type.includes('pdf')) {
+        throw new Error("File is not a valid PDF");
+      }
+      
+      const fileExt = getFileExtension(fileUrl) || 'pdf';
       const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage.from('pdfs').upload(fileName, blob, { contentType: 'application/pdf' });
+      
+      const { error: uploadError } = await supabase.storage
+        .from('pdfs')
+        .upload(fileName, blob, { 
+          contentType: 'application/pdf' 
+        });
+        
       if (uploadError) throw uploadError;
+      
       await fetchPdfs();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Save error:', err.message);
-      setError(err.message);
+      setUploadError(err.message || "Failed to save PDF");
     } finally {
       setLoading(false);
     }
@@ -152,6 +257,19 @@ export default function Home() {
     }
     // eslint-disable-next-line
   }, [user]);
+
+  // If we're still checking authentication, show loading
+  if (authLoading) {
+    return (
+      <div className={styles.page}>
+        <main className={styles.main}>
+          <div className="auth-container">
+            <h2>Loading...</h2>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.page}>
@@ -180,7 +298,7 @@ export default function Home() {
                 {loading ? "Loading..." : authMode === "sign-in" ? "Sign In" : "Sign Up"}
               </button>
             </form>
-            {error && <p style={{ color: "red" }}>{error}</p>}
+            {authError && <p style={{ color: "red" }}>{authError}</p>}
             <p style={{ marginTop: "1rem" }}>
               {authMode === "sign-in" ? (
                 <>
@@ -198,19 +316,28 @@ export default function Home() {
         ) : (
           <>
             <div className="upload-container">
+              <div className="user-info" style={{ marginBottom: '1rem' }}>
+                <p>Logged in as: <strong>{user.email}</strong></p>
+              </div>
               <h2>Upload PDF</h2>
               <form onSubmit={handleUpload}>
                 <input
                   type="file"
                   accept="application/pdf"
-                  onChange={(e) => setPdfFile(e.target.files[0])}
+                  onChange={(e) => setPdfFile(e.target.files ? e.target.files[0] : null)}
                   required
                   disabled={loading}
                 />
-                <button type="submit" disabled={loading}>{loading ? "Uploading..." : "Upload"}</button>
+                <button type="submit" disabled={loading}>
+                  {loading ? "Uploading..." : "Upload"}
+                </button>
               </form>
               {uploadError && <p style={{ color: "red" }}>{uploadError}</p>}
-              <button style={{ marginTop: "1rem" }} onClick={handleSignOut}>
+              <button 
+                style={{ marginTop: "1rem" }} 
+                onClick={handleSignOut}
+                disabled={loading}
+              >
                 Sign Out
               </button>
             </div>
