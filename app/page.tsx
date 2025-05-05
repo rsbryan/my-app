@@ -3,6 +3,8 @@ import { useState, useEffect } from "react";
 import styles from "./page.module.css";
 import { supabase } from "./supabaseClient";
 import { Session, User } from "@supabase/supabase-js";
+import { useTheme } from "./themeContext";
+import { useStats, formatBytes } from "./statsContext";
 
 // Define types for our PDF file object
 interface PdfFile {
@@ -12,6 +14,12 @@ interface PdfFile {
 }
 
 export default function Home() {
+  // Theme state
+  const { theme, toggleTheme } = useTheme();
+  
+  // Stats state
+  const { stats, updateStats, isLoading: statsLoading } = useStats();
+  
   // Auth state
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
@@ -158,6 +166,8 @@ export default function Home() {
       if (fileInput) fileInput.value = '';
       
       await fetchPdfs();
+      // Update usage stats after successful upload
+      await updateStats();
     } catch (error: any) {
       setUploadError(error.message || "Failed to upload file");
       console.error("Upload error:", error);
@@ -245,8 +255,9 @@ export default function Home() {
       if (uploadError) throw uploadError;
       
       await fetchPdfs();
+      // Update usage stats after successful save
+      await updateStats();
     } catch (err: any) {
-      console.error('Save error:', err.message);
       setUploadError(err.message || "Failed to save PDF");
     } finally {
       setLoading(false);
@@ -271,6 +282,9 @@ export default function Home() {
       
       // Update the UI by removing the deleted file
       setPdfs(pdfs.filter(pdf => pdf.name !== fileName));
+      
+      // Update usage stats after successful deletion
+      await updateStats();
     } catch (error: any) {
       setUploadError(error.message || "Failed to delete file");
       console.error("Delete error:", error);
@@ -341,6 +355,7 @@ export default function Home() {
   useEffect(() => {
     if (user) {
       fetchPdfs();
+      updateStats();
     } else {
       setPdfs([]);
     }
@@ -360,8 +375,57 @@ export default function Home() {
     );
   }
 
+  // Theme toggle button
+  const ThemeToggleButton = () => (
+    <button 
+      className="theme-toggle" 
+      onClick={toggleTheme} 
+      aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+    >
+      {theme === 'light' ? '🌙' : '☀️'}
+    </button>
+  );
+
+  // Usage stats component
+  const UsageStats = () => {
+    if (!user) return null;
+    
+    return (
+      <div className="stats-panel">
+        <h3>Usage Analytics</h3>
+        {statsLoading ? (
+          <p>Loading statistics...</p>
+        ) : (
+          <div className="stats-container">
+            <div className="stat-card">
+              <div className="stat-value">{stats.totalFiles}</div>
+              <div className="stat-label">Files</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value">{formatBytes(stats.totalStorage)}</div>
+              <div className="stat-label">Storage Used</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value">{formatBytes(stats.avgFileSize)}</div>
+              <div className="stat-label">Avg. File Size</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value">
+                {stats.lastUpload 
+                  ? new Date(stats.lastUpload).toLocaleDateString() 
+                  : 'N/A'}
+              </div>
+              <div className="stat-label">Last Upload</div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className={styles.page}>
+      <ThemeToggleButton />
       <main className={styles.main}>
         {!user ? (
           <div className="auth-container">
@@ -407,7 +471,17 @@ export default function Home() {
             <div className="upload-container">
               <div className="user-info" style={{ marginBottom: '1rem' }}>
                 <p>Logged in as: <strong>{user.email}</strong></p>
+                <button 
+                  style={{ marginTop: "0.5rem" }} 
+                  onClick={handleSignOut}
+                  disabled={loading}
+                >
+                  Sign Out
+                </button>
               </div>
+              
+              <UsageStats />
+              
               <h2>Upload PDF</h2>
               <form onSubmit={handleUpload}>
                 <input
@@ -422,13 +496,6 @@ export default function Home() {
                 </button>
               </form>
               {uploadError && <p style={{ color: "red" }}>{uploadError}</p>}
-              <button 
-                style={{ marginTop: "1rem" }} 
-                onClick={handleSignOut}
-                disabled={loading}
-              >
-                Sign Out
-              </button>
             </div>
             <div className="upload-list">
               <h2>Your PDFs</h2>
@@ -487,14 +554,6 @@ export default function Home() {
                               className="btn-delete"
                             >
                               Delete
-                            </button>
-                            <button
-                              type="button"
-                              disabled={loading}
-                              onClick={() => handleDownloadAndSave(pdf.url)}
-                              className="btn-save"
-                            >
-                              Save
                             </button>
                           </div>
                         </>
